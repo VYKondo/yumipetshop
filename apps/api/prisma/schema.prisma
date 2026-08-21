@@ -1,0 +1,141 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- TENANT ----------
+
+model Petshop {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique          // usado em URLs/subdomínio no futuro
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users             User[]
+  dogs              Dog[]
+  services          Service[]
+  appointments      Appointment[]
+  messageTemplates  MessageTemplate[]
+
+  @@map("petshops")
+}
+
+// ---------- USUÁRIOS (dono / funcionários que logam no sistema) ----------
+
+model User {
+  id           String   @id @default(uuid())
+  petshopId    String   @map("petshop_id")
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  petshop Petshop @relation(fields: [petshopId], references: [id], onDelete: Cascade)
+
+  @@index([petshopId])
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+// ---------- CÃES ----------
+
+model Dog {
+  id           String   @id @default(uuid())
+  petshopId    String   @map("petshop_id")
+  name         String
+  breed        String?  @map("breed")
+  tutorName    String   @map("tutor_name")
+  tutorPhone   String   @map("tutor_phone")   // usado como default ao criar agendamento
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  petshop      Petshop       @relation(fields: [petshopId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([petshopId])
+  @@map("dogs")
+}
+
+// ---------- SERVIÇOS ----------
+
+model Service {
+  id           String   @id @default(uuid())
+  petshopId    String   @map("petshop_id")
+  name         String                          // ex: "Tosa higiênica"
+  basePrice    Decimal  @map("base_price") @db.Decimal(10, 2)   // sugestão editável no agendamento
+  defaultDurationMin Int @map("default_duration_min")           // sugestão editável no agendamento
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  petshop      Petshop       @relation(fields: [petshopId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([petshopId])
+  @@map("services")
+}
+
+// ---------- AGENDAMENTOS ----------
+
+model Appointment {
+  id                String   @id @default(uuid())
+  petshopId         String   @map("petshop_id")
+  dogId             String   @map("dog_id")
+  serviceId         String   @map("service_id")
+
+  scheduledAt       DateTime @map("scheduled_at")           // data/hora de início
+  durationMin       Int      @map("duration_min")            // definido pelo user neste agendamento
+  price             Decimal  @db.Decimal(10, 2)               // preço definido pelo user neste agendamento
+  taxidogPrice       Decimal @default(0) @map("taxidog_price") @db.Decimal(10, 2) // variável por agendamento
+  notes             String?  @map("notes")                   // observações sobre o cão, opcional
+  contactPhone      String   @map("contact_phone")           // snapshot do telefone usado para esse atendimento
+
+  status            AppointmentStatus @default(SCHEDULED)
+  whatsappReminderSentAt DateTime? @map("whatsapp_reminder_sent_at")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  petshop Petshop @relation(fields: [petshopId], references: [id], onDelete: Cascade)
+  dog     Dog     @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([petshopId, scheduledAt])
+  @@map("appointments")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  DONE
+  CANCELED
+  NO_SHOW
+}
+
+// ---------- TEMPLATE DE MENSAGEM WHATSAPP ----------
+
+model MessageTemplate {
+  id        String   @id @default(uuid())
+  petshopId String   @map("petshop_id")
+  name      String   @default("Confirmação padrão")
+  // placeholders suportados: {{tutor_name}} {{dog_name}} {{service_name}} {{date}} {{time}} {{price}}
+  content   String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  petshop Petshop @relation(fields: [petshopId], references: [id], onDelete: Cascade)
+
+  @@index([petshopId])
+  @@map("message_templates")
+}
